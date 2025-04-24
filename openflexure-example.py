@@ -36,7 +36,6 @@ def get_camera():
             def stop_preview(self): print("[Mock] Camera preview stopped")
             def take_photo(self, filename):
                 print(f"[Mock] Photo taken and saved to {filename}")
-                # generate placeholder
                 img = Image.new('RGB', (640, 480), 'gray')
                 img.save(filename)
         return Camera()
@@ -63,7 +62,6 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
-        # Hardware
         self.sb = get_sangaboard()
         try:
             self.sb.open()
@@ -72,15 +70,14 @@ class App:
         self.cam = get_camera()
         self.sb.illumination.cc_led = 0.0
 
-        # State
         self.motor_increment_fine = DEFAULT_FINE_INCREMENT
         self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
         self.led_brightness = DEFAULT_LED_BRIGHTNESS
         self.timelapse_running = False
+        self.previewing = False
         self.after_id = None
         self.folder = None
 
-        # Build UI sections
         self.build_motor_controls()
         self.build_led_control()
         self.build_preview_button()
@@ -146,12 +143,8 @@ class App:
     def update_led(self, val):
         self.led_brightness = float(val)
 
-        def toggle_external_preview(self):
-        """
-        Toggle the external camera preview window and LED.
-        """
+    def toggle_external_preview(self):
         if not self.previewing:
-            # Turn LED on for preview
             self.sb.illumination.cc_led = self.led_brightness
             try:
                 self.cam.start_preview()
@@ -160,7 +153,6 @@ class App:
             self.previewing = True
             self.preview_btn.config(text="Stop Preview")
         else:
-            # Stop preview and turn LED off
             try:
                 self.cam.stop_preview()
             except Exception:
@@ -170,10 +162,6 @@ class App:
             self.preview_btn.config(text="Show External Preview")
 
     def start_timelapse(self):
-        """
-        Begin timelapse: close external preview if open, then capture images.
-        """
-        # If preview is active, stop it and turn off LED
         if self.previewing:
             try:
                 self.cam.stop_preview()
@@ -188,24 +176,6 @@ class App:
         if duration is None or duration <= 0 or frequency is None or frequency <= 0:
             messagebox.showerror("Error", "Invalid duration or frequency")
             return
-        # Disable controls
-        for widget in self.root.winfo_children():
-            if isinstance(widget, tk.Button) or isinstance(widget, tk.Scale):
-                widget.config(state='disabled')
-        # Prepare folder
-        now = datetime.datetime.now()
-        self.folder = now.strftime("%Y-%m-%d_%H-%M-%S")
-        os.makedirs(self.folder, exist_ok=True)
-        self.end_time = now + datetime.timedelta(seconds=duration)
-        self.start_btn.config(text="Stop and end timelapse early", command=self.stop_timelapse)
-        self.timelapse_running = True
-        self.capture_loop(frequency)(self):
-        duration = parse_time_value(self.duration_entry.get())
-        frequency = parse_time_value(self.freq_entry.get())
-        if duration is None or duration <= 0 or frequency is None or frequency <= 0:
-            messagebox.showerror("Error", "Invalid duration or frequency")
-            return
-        # disable controls
         for widget in self.root.winfo_children():
             if isinstance(widget, tk.Button) or isinstance(widget, tk.Scale):
                 widget.config(state='disabled')
@@ -241,12 +211,10 @@ class App:
             return
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = os.path.join(self.folder, f"{timestamp}.jpg")
-        # LED on during capture
         self.sb.illumination.cc_led = self.led_brightness
         self.cam.take_photo(filename)
         self.sb.illumination.cc_led = 0.0
         print(f"Captured: {filename}")
-        # update last image in GUI
         img = Image.open(filename)
         img.thumbnail((380, 280))
         self.photo = ImageTk.PhotoImage(img)
