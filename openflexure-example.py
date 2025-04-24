@@ -88,19 +88,6 @@ class App:
         self.change_inc_btn.pack(pady=5)
 
         # ... rest unchanged
-(self, root):
-        self.root = root
-        root.title("OpenFlexure Timelapse Controller")
-
-        # Hardware
-        self.sb = Sangaboard()
-        self.cam = Camera()
-
-        # State
-        self.motor_increment_fine = DEFAULT_FINE_INCREMENT
-        self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
-        self.led_brightness = DEFAULT_LED_BRIGHTNESS
-        self.timelapse_running = False
         self.after_id = None
         self.previewing = False
 
