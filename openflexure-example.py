@@ -55,6 +55,7 @@ def get_camera():
 
             def take_photo(self, filename):
                 print(f"[Mock] Photo taken and saved to {filename}")
+                # generate placeholder
                 img = Image.new('RGB', (640, 480), 'gray')
                 img.save(filename)
 
@@ -88,7 +89,6 @@ class App:
             self.sb.open()
         except Exception:
             pass
-
         self.cam = get_camera()
         self.sb.illumination.cc_led = 0.0
 
@@ -268,37 +268,23 @@ class App:
     def finish_timelapse(self):
         """Handle normal completion of timelapse."""
         messagebox.showinfo("Done", "Timelapse complete")
-        self.reset_controls()
+        self.reset_controllers()
 
-        def reset_controls(self):
-        """
-        Re-enable all controls after timelapse and reset preview state.
-        """
-        # Motor controls
+    def reset_controls(self):
+        """Re-enable all controls after timelapse."""
         for btn in self.coarse_frame.winfo_children():
             btn.config(state='normal')
         for btn in self.fine_frame.winfo_children():
             btn.config(state='normal')
-        # LED slider and preview button
         self.led_scale.config(state='normal')
         self.preview_btn.config(state='normal')
-        # Timelapse settings entries
         self.duration_entry.config(state='normal')
         self.freq_entry.config(state='normal')
-        # Reset start button
         self.start_btn.config(
             text="Confirm settings and start timelapse",
             command=self.start_timelapse,
             state='normal'
         )
-        # Reset preview state
-        if self.previewing:
-            try:
-                self.cam.stop_preview()
-            except Exception:
-                pass
-        self.previewing = False
-        self.preview_btn.config(text="Show External Preview")
         self.timelapse_running = False
 
     def capture_loop(self, freq):
