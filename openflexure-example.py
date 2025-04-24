@@ -146,10 +146,60 @@ class App:
     def update_led(self, val):
         self.led_brightness = float(val)
 
-    def toggle_external_preview(self):
-        self.cam.start_preview()
+        def toggle_external_preview(self):
+        """
+        Toggle the external camera preview window and LED.
+        """
+        if not self.previewing:
+            # Turn LED on for preview
+            self.sb.illumination.cc_led = self.led_brightness
+            try:
+                self.cam.start_preview()
+            except Exception:
+                pass
+            self.previewing = True
+            self.preview_btn.config(text="Stop Preview")
+        else:
+            # Stop preview and turn LED off
+            try:
+                self.cam.stop_preview()
+            except Exception:
+                pass
+            self.sb.illumination.cc_led = 0.0
+            self.previewing = False
+            self.preview_btn.config(text="Show External Preview")
 
     def start_timelapse(self):
+        """
+        Begin timelapse: close external preview if open, then capture images.
+        """
+        # If preview is active, stop it and turn off LED
+        if self.previewing:
+            try:
+                self.cam.stop_preview()
+            except Exception:
+                pass
+            self.sb.illumination.cc_led = 0.0
+            self.previewing = False
+            self.preview_btn.config(text="Show External Preview")
+
+        duration = parse_time_value(self.duration_entry.get())
+        frequency = parse_time_value(self.freq_entry.get())
+        if duration is None or duration <= 0 or frequency is None or frequency <= 0:
+            messagebox.showerror("Error", "Invalid duration or frequency")
+            return
+        # Disable controls
+        for widget in self.root.winfo_children():
+            if isinstance(widget, tk.Button) or isinstance(widget, tk.Scale):
+                widget.config(state='disabled')
+        # Prepare folder
+        now = datetime.datetime.now()
+        self.folder = now.strftime("%Y-%m-%d_%H-%M-%S")
+        os.makedirs(self.folder, exist_ok=True)
+        self.end_time = now + datetime.timedelta(seconds=duration)
+        self.start_btn.config(text="Stop and end timelapse early", command=self.stop_timelapse)
+        self.timelapse_running = True
+        self.capture_loop(frequency)(self):
         duration = parse_time_value(self.duration_entry.get())
         frequency = parse_time_value(self.freq_entry.get())
         if duration is None or duration <= 0 or frequency is None or frequency <= 0:
