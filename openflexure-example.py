@@ -268,7 +268,7 @@ class App:
     def finish_timelapse(self):
         """Handle normal completion of timelapse."""
         messagebox.showinfo("Done", "Timelapse complete")
-        self.reset_controllers()
+        self.reset_controls()
 
     def reset_controls(self):
         """Re-enable all controls after timelapse."""
