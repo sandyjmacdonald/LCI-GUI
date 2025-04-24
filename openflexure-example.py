@@ -141,10 +141,19 @@ class App:
         self.sb.move_rel(list(rel))
 
     def update_led(self, val):
+        """
+        Update the LED brightness from the slider; apply immediately if previewing.
+        """
         self.led_brightness = float(val)
+        if self.previewing:
+            self.sb.illumination.cc_led = self.led_brightness
 
     def toggle_external_preview(self):
+        """
+        Toggle the external camera preview window and keep LED in sync.
+        """
         if not self.previewing:
+            # Turn LED on
             self.sb.illumination.cc_led = self.led_brightness
             try:
                 self.cam.start_preview()
@@ -153,6 +162,7 @@ class App:
             self.previewing = True
             self.preview_btn.config(text="Stop Preview")
         else:
+            # Stop preview and turn LED off
             try:
                 self.cam.stop_preview()
             except Exception:
