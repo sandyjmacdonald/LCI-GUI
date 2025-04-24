@@ -3,6 +3,7 @@ from tkinter import messagebox, simpledialog
 import datetime
 import os
 import re
+import tempfile
 
 # For image display
 try:
@@ -17,51 +18,32 @@ try:
 except ImportError:
     class Sangaboard:
         class Illum:
-            def __init__(self):
-                self._cc_led = 0.0
-
+            def __init__(self): self._cc_led = 0.0
             @property
-            def cc_led(self):
-                return self._cc_led
-
+            def cc_led(self): return self._cc_led
             @cc_led.setter
-            def cc_led(self, val):
-                print(f"[Mock] LED brightness set to {val}")
-                self._cc_led = val
-
-        def open(self):
-            print("[Mock] Sangaboard opened")
-
-        def close(self):
-            print("[Mock] Sangaboard closed")
-
+            def cc_led(self, val): print(f"[Mock] LED brightness set to {val}"); self._cc_led = val
+        def open(self): print("[Mock] Sangaboard opened")
+        def close(self): print("[Mock] Sangaboard closed")
         @property
-        def illumination(self):
-            return Sangaboard.Illum()
-
-        def move_rel(self, rel):
-            print(f"[Mock] move_rel called with {rel}")
+        def illumination(self): return Sangaboard.Illum()
+        def move_rel(self, rel): print(f"[Mock] move_rel called with {rel}")
 
 # --- Mock or real Camera ---
 try:
     from picamzero import Camera
 except ImportError:
     class Camera:
-        def start_preview(self):
-            print("[Mock] Camera preview started")
-
-        def stop_preview(self):
-            print("[Mock] Camera preview stopped")
-
-        def take_photo(self, filename):
-            print(f"[Mock] Photo taken and saved to {filename}")
+        def start_preview(self): print("[Mock] Camera preview started")
+        def stop_preview(self): print("[Mock] Camera preview stopped")
+        def take_photo(self, filename): print(f"[Mock] Photo taken and saved to {filename}")
 
 # Default increments and LED brightness
 DEFAULT_FINE_INCREMENT = 50
 DEFAULT_COARSE_INCREMENT = 500
-DEFAULT_LED_BRIGHTNESS = 0.0  # start with LED off
+DEFAULT_LED_BRIGHTNESS = 0.33  # Slider start value, LED off until preview or capture
 
-# Utility: parse time strings like "1h 30m 10s"
+# Parse time strings like "1h 30m 10s"
 def parse_time_value(time_str):
     pattern = r"^\s*((?P<days>\d+)\s*d)?\s*((?P<hours>\d+)\s*h)?\s*((?P<minutes>\d+)\s*m)?\s*((?P<seconds>\d+)\s*s)?\s*$"
     match = re.match(pattern, time_str.strip(), re.IGNORECASE)
@@ -78,15 +60,14 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
-        # Persistent hardware connections
+        # Hardware
         self.sb = Sangaboard()
         try:
             self.sb.open()
         except Exception:
             pass
-        # Ensure LED is off at startup
-        self.sb.illumination.cc_led = DEFAULT_LED_BRIGHTNESS
-
+        # LED initially off
+        self.sb.illumination.cc_led = 0.0
         self.cam = Camera()
         self.root.protocol('WM_DELETE_WINDOW', self.cleanup)
 
@@ -95,8 +76,10 @@ class App:
         self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
         self.led_brightness = DEFAULT_LED_BRIGHTNESS
         self.timelapse_running = False
-        self.after_id = None
         self.previewing = False
+        self.after_id = None
+        self.preview_after_id = None
+        self.preview_file = os.path.join(tempfile.gettempdir(), "openflexure_preview.jpg")
 
         # Motor controls
         self.coarse_frame = tk.LabelFrame(root, text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})")
@@ -118,16 +101,16 @@ class App:
         self.led_scale.set(self.led_brightness)
         self.led_scale.pack(fill='x', padx=10, pady=5)
 
-        # Preview toggle (no external Qt window)
+        # Preview toggle
         self.preview_btn = tk.Button(root, text="Start Preview", command=self.toggle_preview)
         self.preview_btn.pack(pady=5)
 
-        # Camera display (uses last frame)
-        display = tk.LabelFrame(root, text="Camera View", width=400)
+        # Camera display
+        display = tk.LabelFrame(root, text="Camera View", width=400, height=300)
         display.pack(anchor='center', padx=10, pady=5)
         display.pack_propagate(False)
         self.image_label = tk.Label(display, text="Preview stopped")
-        self.image_label.pack()
+        self.image_label.pack(expand=True)
 
         # Timelapse settings
         tl = tk.LabelFrame(root, text="Timelapse Settings", width=400)
@@ -143,7 +126,7 @@ class App:
         self.freq_entry.grid(row=2, column=1, padx=5, pady=2)
         self.freq_entry.insert(0, "5s")
 
-        # Start/Stop timelapse
+        # Timelapse control
         self.start_btn = tk.Button(root, text="Confirm settings and start timelapse", command=self.start_timelapse)
         self.start_btn.pack(pady=10)
 
@@ -154,7 +137,8 @@ class App:
         self.fine_frame.config(text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
         axes = [('X+', (1,0,0)), ('Y+', (0,1,0)), ('Z+', (0,0,1)),
                 ('X-', (-1,0,0)), ('Y-', (0,-1,0)), ('Z-', (0,0,-1))]
-        self.coarse_buttons, self.fine_buttons = [], []
+        self.coarse_buttons = []
+        self.fine_buttons = []
         for idx, (txt, d) in enumerate(axes):
             rel_c = (d[0]*self.motor_increment_coarse, d[1]*self.motor_increment_coarse, d[2]*self.motor_increment_coarse)
             btn_c = tk.Button(self.coarse_frame, text=txt, command=lambda r=rel_c: self.move(r))
@@ -170,12 +154,10 @@ class App:
         if new_coarse is None: return
         new_fine = simpledialog.askinteger("Fine increment", "Enter fine increment:", initialvalue=self.motor_increment_fine, minvalue=1)
         if new_fine is None: return
-        self.motor_increment_coarse = new_coarse
-        self.motor_increment_fine = new_fine
+        self.motor_increment_coarse, self.motor_increment_fine = new_coarse, new_fine
         self.build_motor_controls()
 
     def move(self, rel):
-        # Only move motors; LED unchanged
         self.sb.move_rel(list(rel))
 
     def update_led(self, val):
@@ -187,16 +169,34 @@ class App:
         if not self.previewing:
             # Turn LED on
             self.sb.illumination.cc_led = self.led_brightness
-            # Avoid external Qt window: just update label text
+            # Start preview loop
+            self.preview_loop()
             self.preview_btn.config(text="Stop Preview")
             self.previewing = True
-            self.image_label.config(text="Preview running...", image='')
         else:
+            # Stop loop
+            if self.preview_after_id:
+                self.root.after_cancel(self.preview_after_id)
+                self.preview_after_id = None
             # Turn LED off
             self.sb.illumination.cc_led = 0.0
             self.preview_btn.config(text="Start Preview")
             self.previewing = False
             self.image_label.config(text="Preview stopped", image='')
+
+    def preview_loop(self):
+        # Capture one frame
+        try:
+            self.cam.take_photo(self.preview_file)
+            if Image and ImageTk:
+                img = Image.open(self.preview_file)
+                img.thumbnail((380, 280))
+                self.photo = ImageTk.PhotoImage(img)
+                self.image_label.config(image=self.photo, text='')
+        except Exception:
+            pass
+        # Schedule next
+        self.preview_after_id = self.root.after(500, self.preview_loop)
 
     def start_timelapse(self):
         if not self.timelapse_running:
@@ -205,74 +205,45 @@ class App:
             if not dur or dur <= 0 or not freq or freq <= 0:
                 messagebox.showerror("Error", "Invalid duration or frequency")
                 return
-            for btn in self.coarse_buttons + self.fine_buttons:
-                btn.config(state='disabled')
-            self.change_inc_btn.config(state='disabled')
-            self.led_scale.config(state='disabled')
-            self.preview_btn.config(state='disabled')
-            now = datetime.datetime.now()
-            self.folder = now.strftime("%Y-%m-%d_%H-%M-%S")
-            os.makedirs(self.folder, exist_ok=True)
+            for btn in self.coarse_buttons + self.fine_buttons: btn.config(state='disabled')
+            self.change_inc_btn.config(state='disabled'); self.led_scale.config(state='disabled'); self.preview_btn.config(state='disabled')
+            now = datetime.datetime.now(); self.folder = now.strftime("%Y-%m-%d_%H-%M-%S"); os.makedirs(self.folder, exist_ok=True)
             self.end_time = now + datetime.timedelta(seconds=dur)
             self.start_btn.config(text="Stop and end timelapse early", command=self.stop_timelapse)
-            self.timelapse_running = True
-            self.capture_loop(freq)
+            self.timelapse_running = True; self.capture_loop(freq)
 
     def stop_timelapse(self):
-        if self.after_id:
-            self.root.after_cancel(self.after_id)
-        messagebox.showinfo("Stopped", "Timelapse stopped early")
-        self._reset_after_timelapse()
+        if self.after_id: self.root.after_cancel(self.after_id)
+        messagebox.showinfo("Stopped", "Timelapse stopped early"); self._reset_after_timelapse()
 
     def finish_timelapse(self):
-        messagebox.showinfo("Done", "Timelapse complete")
-        self._reset_after_timelapse()
+        messagebox.showinfo("Done", "Timelapse complete"); self._reset_after_timelapse()
 
     def _reset_after_timelapse(self):
-        for btn in self.coarse_buttons + self.fine_buttons:
-            btn.config(state='normal')
-        self.change_inc_btn.config(state='normal')
-        self.led_scale.config(state='normal')
-        self.preview_btn.config(state='normal')
+        for btn in self.coarse_buttons + self.fine_buttons: btn.config(state='normal')
+        self.change_inc_btn.config(state='normal'); self.led_scale.config(state='normal'); self.preview_btn.config(state='normal')
         self.start_btn.config(text="Confirm settings and start timelapse", command=self.start_timelapse)
         self.timelapse_running = False
 
     def capture_loop(self, freq):
-        if datetime.datetime.now() >= self.end_time:
-            self.finish_timelapse()
-            return
-        ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        fname = os.path.join(self.folder, f"{ts}.jpg")
-        # LED on for capture
-        self.sb.illumination.cc_led = self.led_brightness
-        self.cam.take_photo(fname)
-        # LED off
-        self.sb.illumination.cc_led = 0.0
+        if datetime.datetime.now() >= self.end_time: self.finish_timelapse(); return
+        ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"); fname = os.path.join(self.folder, f"{ts}.jpg")
+        self.sb.illumination.cc_led = self.led_brightness; self.cam.take_photo(fname); self.sb.illumination.cc_led = 0.0
         print(f"Captured: {fname}")
         if Image and ImageTk:
             try:
-                img = Image.open(fname)
-                img.thumbnail((400, 400))
-                self.photo = ImageTk.PhotoImage(img)
-                self.image_label.config(image=self.photo, text='')
+                img = Image.open(fname); img.thumbnail((380, 280)); self.photo = ImageTk.PhotoImage(img); self.image_label.config(image=self.photo, text='')
             except Exception:
                 pass
-        self.after_id = self.root.after(int(freq * 1000), lambda: self.capture_loop(freq))
+        self.after_id = self.root.after(int(freq*1000), lambda: self.capture_loop(freq))
 
     def cleanup(self):
-        # Stop preview and close hardware
-        if self.previewing:
-            try:
-                self.sb.illumination.cc_led = 0.0
-            except Exception:
-                pass
-        try:
-            self.sb.close()
-        except Exception:
-            pass
+        if self.previewing and self.preview_after_id: self.root.after_cancel(self.preview_after_id)
+        try: self.sb.illumination.cc_led = 0.0
+        except: pass
+        try: self.sb.close()
+        except: pass
         self.root.destroy()
 
 if __name__ == '__main__':
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+    root = tk.Tk(); app = App(root); root.mainloop()
