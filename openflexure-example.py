@@ -59,6 +59,39 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
+        # Hardware: open persistent Sangaboard connection
+        self.sb = Sangaboard()
+        try:
+            self.sb.open()
+        except Exception:
+            pass  # if open not needed or mock
+        self.cam = Camera()
+        self.root.protocol('WM_DELETE_WINDOW', self.cleanup)
+
+        # State
+        self.motor_increment_fine = DEFAULT_FINE_INCREMENT
+        self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
+        self.led_brightness = DEFAULT_LED_BRIGHTNESS
+        self.timelapse_running = False
+        self.after_id = None
+        self.previewing = False
+
+        # Motor control frames
+        self.coarse_frame = tk.LabelFrame(root, text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})")
+        self.coarse_frame.pack(padx=10, pady=5)
+        self.fine_frame = tk.LabelFrame(root, text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
+        self.fine_frame.pack(padx=10, pady=5)
+        self.build_motor_controls()
+
+        # Change increments button
+        self.change_inc_btn = tk.Button(root, text="Change increments", command=self.change_increments)
+        self.change_inc_btn.pack(pady=5)
+
+        # ... rest unchanged
+(self, root):
+        self.root = root
+        root.title("OpenFlexure Timelapse Controller")
+
         # Hardware
         self.sb = Sangaboard()
         self.cam = Camera()
@@ -103,14 +136,18 @@ class App:
         self.image_label.pack()
 
         # Timelapse settings frame
-        tl = tk.LabelFrame(root, text="Timelapse Settings (e.g. 1h 30m 10s)", width=400)
+        tl = tk.LabelFrame(root, text="Timelapse Settings", width=400)
         tl.pack(anchor='center', padx=10, pady=5)
         tl.pack_propagate(False)
-        tk.Label(tl, text="Duration:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-        self.duration_entry = tk.Entry(tl); self.duration_entry.grid(row=0, column=1, padx=5, pady=2)
+        # Explanatory text
+        tk.Label(tl, text="e.g. 1h 30m 10s", fg="gray").grid(row=0, column=0, columnspan=2, pady=(5,2))
+        tk.Label(tl, text="Duration:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.duration_entry = tk.Entry(tl)
+        self.duration_entry.grid(row=1, column=1, padx=5, pady=2)
         self.duration_entry.insert(0, "30m")
-        tk.Label(tl, text="Frequency:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
-        self.freq_entry = tk.Entry(tl); self.freq_entry.grid(row=1, column=1, padx=5, pady=2)
+        tk.Label(tl, text="Frequency:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+        self.freq_entry = tk.Entry(tl)
+        self.freq_entry.grid(row=2, column=1, padx=5, pady=2)
         self.freq_entry.insert(0, "5s")
 
         # Start/Stop timelapse button
@@ -121,8 +158,8 @@ class App:
         # Clear old buttons and update titles
         for w in self.coarse_frame.winfo_children(): w.destroy()
         for w in self.fine_frame.winfo_children(): w.destroy()
-        self.coarse_frame.config(text=f"Coarse Motor Control (+/- {self.motor_increment_coarse})")
-        self.fine_frame.config(text=f"Fine Motor Control (+/- {self.motor_increment_fine})")
+        self.coarse_frame.config(text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})")
+        self.fine_frame.config(text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
         # Axes in two-row layout
         axes = [('X+', (1,0,0)), ('Y+', (0,1,0)), ('Z+', (0,0,1)),
                 ('X-', (-1,0,0)), ('Y-', (0,-1,0)), ('Z-', (0,0,-1))]
@@ -138,11 +175,9 @@ class App:
             self.fine_buttons.append(btn_f)
 
     def change_increments(self):
-        new_coarse = simpledialog.askinteger("Coarse increment", "Enter coarse increment:",
-                                             initialvalue=self.motor_increment_coarse, minvalue=1)
+        new_coarse = simpledialog.askinteger("Coarse increment", "Enter coarse increment:", initialvalue=self.motor_increment_coarse, minvalue=1)
         if new_coarse is None: return
-        new_fine = simpledialog.askinteger("Fine increment", "Enter fine increment:",
-                                           initialvalue=self.motor_increment_fine, minvalue=1)
+        new_fine = simpledialog.askinteger("Fine increment", "Enter fine increment:", initialvalue=self.motor_increment_fine, minvalue=1)
         if new_fine is None: return
         self.motor_increment_coarse, self.motor_increment_fine = new_coarse, new_fine
         self.build_motor_controls()
