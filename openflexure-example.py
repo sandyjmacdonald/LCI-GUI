@@ -3,7 +3,6 @@ from tkinter import messagebox, simpledialog
 import datetime
 import os
 import re
-import contextlib
 
 # For image display
 try:
@@ -59,12 +58,12 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
-        # Hardware: open persistent Sangaboard connection
+        # Hardware: open and keep connection
         self.sb = Sangaboard()
         try:
             self.sb.open()
         except Exception:
-            pass  # if open not needed or mock
+            pass
         self.cam = Camera()
         self.root.protocol('WM_DELETE_WINDOW', self.cleanup)
 
@@ -73,21 +72,6 @@ class App:
         self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
         self.led_brightness = DEFAULT_LED_BRIGHTNESS
         self.timelapse_running = False
-        self.after_id = None
-        self.previewing = False
-
-        # Motor control frames
-        self.coarse_frame = tk.LabelFrame(root, text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})")
-        self.coarse_frame.pack(padx=10, pady=5)
-        self.fine_frame = tk.LabelFrame(root, text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
-        self.fine_frame.pack(padx=10, pady=5)
-        self.build_motor_controls()
-
-        # Change increments button
-        self.change_inc_btn = tk.Button(root, text="Change increments", command=self.change_increments)
-        self.change_inc_btn.pack(pady=5)
-
-        # ... rest unchanged
         self.after_id = None
         self.previewing = False
 
@@ -126,7 +110,6 @@ class App:
         tl = tk.LabelFrame(root, text="Timelapse Settings", width=400)
         tl.pack(anchor='center', padx=10, pady=5)
         tl.pack_propagate(False)
-        # Explanatory text
         tk.Label(tl, text="e.g. 1h 30m 10s", fg="gray").grid(row=0, column=0, columnspan=2, pady=(5,2))
         tk.Label(tl, text="Duration:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.duration_entry = tk.Entry(tl)
@@ -196,6 +179,22 @@ class App:
             self.preview_btn.config(text="Start Preview")
             self.previewing = False
             self.image_label.config(image='', text='')
+
+    def cleanup(self):
+        """
+        Stop preview, close hardware connections, and destroy the GUI.
+        """
+        if self.previewing:
+            try:
+                self.cam.stop_preview()
+            except Exception:
+                pass
+        if hasattr(self.sb, 'close'):
+            try:
+                self.sb.close()
+            except Exception:
+                pass
+        self.root.destroy()
 
     def start_timelapse(self):
         if not self.timelapse_running:
