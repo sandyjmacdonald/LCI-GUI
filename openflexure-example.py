@@ -59,9 +59,9 @@ except ImportError:
 # Default increments and LED brightness
 DEFAULT_FINE_INCREMENT = 50
 DEFAULT_COARSE_INCREMENT = 500
-DEFAULT_LED_BRIGHTNESS = 0.33
+DEFAULT_LED_BRIGHTNESS = 0.0  # start with LED off
 
-# Parse time strings like "1h 30m 10s"
+# Utility: parse time strings like "1h 30m 10s"
 def parse_time_value(time_str):
     pattern = r"^\s*((?P<days>\d+)\s*d)?\s*((?P<hours>\d+)\s*h)?\s*((?P<minutes>\d+)\s*m)?\s*((?P<seconds>\d+)\s*s)?\s*$"
     match = re.match(pattern, time_str.strip(), re.IGNORECASE)
@@ -78,12 +78,15 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
-        # Open persistent hardware connections
+        # Persistent hardware connections
         self.sb = Sangaboard()
         try:
             self.sb.open()
         except Exception:
             pass
+        # Ensure LED is off at startup
+        self.sb.illumination.cc_led = DEFAULT_LED_BRIGHTNESS
+
         self.cam = Camera()
         self.root.protocol('WM_DELETE_WINDOW', self.cleanup)
 
@@ -106,7 +109,7 @@ class App:
         self.change_inc_btn = tk.Button(root, text="Change increments", command=self.change_increments)
         self.change_inc_btn.pack(pady=5)
 
-        # LED brightness
+        # LED brightness slider
         led_frame = tk.LabelFrame(root, text="LED Brightness", width=400)
         led_frame.pack(anchor='center', padx=10, pady=5)
         led_frame.pack_propagate(False)
@@ -115,15 +118,15 @@ class App:
         self.led_scale.set(self.led_brightness)
         self.led_scale.pack(fill='x', padx=10, pady=5)
 
-        # Preview toggle
+        # Preview toggle (no external Qt window)
         self.preview_btn = tk.Button(root, text="Start Preview", command=self.toggle_preview)
         self.preview_btn.pack(pady=5)
 
-        # Camera display
+        # Camera display (uses last frame)
         display = tk.LabelFrame(root, text="Camera View", width=400)
         display.pack(anchor='center', padx=10, pady=5)
         display.pack_propagate(False)
-        self.image_label = tk.Label(display)
+        self.image_label = tk.Label(display, text="Preview stopped")
         self.image_label.pack()
 
         # Timelapse settings
@@ -151,8 +154,7 @@ class App:
         self.fine_frame.config(text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
         axes = [('X+', (1,0,0)), ('Y+', (0,1,0)), ('Z+', (0,0,1)),
                 ('X-', (-1,0,0)), ('Y-', (0,-1,0)), ('Z-', (0,0,-1))]
-        self.coarse_buttons = []
-        self.fine_buttons = []
+        self.coarse_buttons, self.fine_buttons = [], []
         for idx, (txt, d) in enumerate(axes):
             rel_c = (d[0]*self.motor_increment_coarse, d[1]*self.motor_increment_coarse, d[2]*self.motor_increment_coarse)
             btn_c = tk.Button(self.coarse_frame, text=txt, command=lambda r=rel_c: self.move(r))
@@ -173,10 +175,8 @@ class App:
         self.build_motor_controls()
 
     def move(self, rel):
-        # Turn LED on during move
-        self.sb.illumination.cc_led = self.led_brightness
+        # Only move motors; LED unchanged
         self.sb.move_rel(list(rel))
-        self.sb.illumination.cc_led = 0.0
 
     def update_led(self, val):
         self.led_brightness = float(val)
@@ -185,17 +185,18 @@ class App:
 
     def toggle_preview(self):
         if not self.previewing:
+            # Turn LED on
             self.sb.illumination.cc_led = self.led_brightness
-            self.cam.start_preview()
+            # Avoid external Qt window: just update label text
             self.preview_btn.config(text="Stop Preview")
             self.previewing = True
             self.image_label.config(text="Preview running...", image='')
         else:
-            self.cam.stop_preview()
+            # Turn LED off
             self.sb.illumination.cc_led = 0.0
             self.preview_btn.config(text="Start Preview")
             self.previewing = False
-            self.image_label.config(image='', text='')
+            self.image_label.config(text="Preview stopped", image='')
 
     def start_timelapse(self):
         if not self.timelapse_running:
@@ -204,7 +205,6 @@ class App:
             if not dur or dur <= 0 or not freq or freq <= 0:
                 messagebox.showerror("Error", "Invalid duration or frequency")
                 return
-            # Disable controls
             for btn in self.coarse_buttons + self.fine_buttons:
                 btn.config(state='disabled')
             self.change_inc_btn.config(state='disabled')
@@ -243,9 +243,10 @@ class App:
             return
         ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         fname = os.path.join(self.folder, f"{ts}.jpg")
-        # Turn LED on for capture
+        # LED on for capture
         self.sb.illumination.cc_led = self.led_brightness
         self.cam.take_photo(fname)
+        # LED off
         self.sb.illumination.cc_led = 0.0
         print(f"Captured: {fname}")
         if Image and ImageTk:
@@ -262,7 +263,7 @@ class App:
         # Stop preview and close hardware
         if self.previewing:
             try:
-                self.cam.stop_preview()
+                self.sb.illumination.cc_led = 0.0
             except Exception:
                 pass
         try:
