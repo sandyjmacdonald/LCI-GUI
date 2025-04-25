@@ -54,7 +54,7 @@ def get_camera():
     """Return a real or mock Camera instance."""
     try:
         from picamzero import Camera
-        return Camera(exposure=DEFAULT_EXPOSURE, white_balance=DEFAULT_WHITEBALANCE)
+        return Camera()
     except ImportError:
         class Camera:
             def start_preview(self):
@@ -112,6 +112,8 @@ class App:
         except Exception:
             pass
         self.cam = get_camera()
+        self.cam.exposure = DEFAULT_EXPOSURE
+        self.cam.white_balance = DEFAULT_WHITEBALANCE
         # Ensure LED off
         self.sb.illumination.cc_led = 0.0
 
