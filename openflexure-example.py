@@ -75,8 +75,6 @@ def get_camera():
         return Camera()
 
 
-# --- Utilities ---
-
 def parse_time_value(time_str):
     """
     Parse strings like '1d 2h 30m 5s' into total seconds.
@@ -90,12 +88,6 @@ def parse_time_value(time_str):
     minutes = int(m.group('minutes') or 0)
     seconds = int(m.group('seconds') or 0)
     return days*86400 + hours*3600 + minutes*60 + seconds
-
-
-# --- Default settings ---
-DEFAULT_FINE_INCREMENT = 50
-DEFAULT_COARSE_INCREMENT = 500
-DEFAULT_LED_BRIGHTNESS = 0.33
 
 
 class App:
@@ -126,6 +118,10 @@ class App:
         self.after_id = None
         self.folder = None
 
+        # Container for motor controls and increment button
+        self.motor_container = tk.Frame(self.root)
+        self.motor_container.pack(padx=10, pady=5)
+
         # Build UI
         self.build_motor_controls()
         self.build_increment_button()
@@ -145,31 +141,45 @@ class App:
                 getattr(self, attr).destroy()
 
         # Frames
-        self.coarse_frame = tk.LabelFrame(self.root,
-            text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})")
-        self.coarse_frame.pack(padx=10, pady=5)
-        self.fine_frame = tk.LabelFrame(self.root,
-            text=f"Fine Motor Control (inc: {self.motor_increment_fine})")
-        self.fine_frame.pack(padx=10, pady=5)
+        self.coarse_frame = tk.LabelFrame(
+            self.motor_container,
+            text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})"
+        )
+        self.coarse_frame.pack(padx=5, pady=5)
+        self.fine_frame = tk.LabelFrame(
+            self.motor_container,
+            text=f"Fine Motor Control (inc: {self.motor_increment_fine})"
+        )
+        self.fine_frame.pack(padx=5, pady=5)
 
         # Axes layout
-        axes = [('X+', (1,0,0)), ('Y+', (0,1,0)), ('Z+', (0,0,1)),
-                ('X-', (-1,0,0)), ('Y-', (0,-1,0)), ('Z-', (0,0,-1))]
+        axes = [
+            ('X+', (1, 0, 0)), ('Y+', (0, 1, 0)), ('Z+', (0, 0, 1)),
+            ('X-', (-1, 0, 0)), ('Y-', (0, -1, 0)), ('Z-', (0, 0, -1))
+        ]
 
         # Create buttons
         for idx, (label, d) in enumerate(axes):
-            rel_c = (d[0]*self.motor_increment_coarse,
-                     d[1]*self.motor_increment_coarse,
-                     d[2]*self.motor_increment_coarse)
-            btn_c = tk.Button(self.coarse_frame, text=label,
-                              command=lambda r=rel_c: self.move(r))
+            rel_c = (
+                d[0] * self.motor_increment_coarse,
+                d[1] * self.motor_increment_coarse,
+                d[2] * self.motor_increment_coarse
+            )
+            btn_c = tk.Button(
+                self.coarse_frame, text=label,
+                command=lambda r=rel_c: self.move(r)
+            )
             btn_c.grid(row=idx//3, column=idx%3, padx=5, pady=5)
 
-            rel_f = (d[0]*self.motor_increment_fine,
-                     d[1]*self.motor_increment_fine,
-                     d[2]*self.motor_increment_fine)
-            btn_f = tk.Button(self.fine_frame, text=label,
-                              command=lambda r=rel_f: self.move(r))
+            rel_f = (
+                d[0] * self.motor_increment_fine,
+                d[1] * self.motor_increment_fine,
+                d[2] * self.motor_increment_fine
+            )
+            btn_f = tk.Button(
+                self.fine_frame, text=label,
+                command=lambda r=rel_f: self.move(r)
+            )
             btn_f.grid(row=idx//3, column=idx%3, padx=5, pady=5)
 
     def build_increment_button(self):
@@ -177,8 +187,10 @@ class App:
         if hasattr(self, 'change_inc_btn'):
             self.change_inc_btn.destroy()
         self.change_inc_btn = tk.Button(
-            self.root, text="Change increments",
-            command=self.change_increments)
+            self.motor_container,
+            text="Change increments",
+            command=self.change_increments
+        )
         self.change_inc_btn.pack(pady=5)
 
     def change_increments(self):
@@ -186,17 +198,20 @@ class App:
         new_coarse = simpledialog.askinteger(
             "Coarse increment", "Enter coarse increment:",
             initialvalue=self.motor_increment_coarse,
-            minvalue=1)
+            minvalue=1
+        )
         if new_coarse is not None:
             self.motor_increment_coarse = new_coarse
         new_fine = simpledialog.askinteger(
             "Fine increment", "Enter fine increment:",
             initialvalue=self.motor_increment_fine,
-            minvalue=1)
+            minvalue=1
+        )
         if new_fine is not None:
             self.motor_increment_fine = new_fine
-        # Rebuild motor controls
+        # Rebuild motor controls and increment button to maintain order
         self.build_motor_controls()
+        self.build_increment_button()
 
     def build_led_control(self):
         """Create LED brightness slider."""
@@ -206,7 +221,8 @@ class App:
         self.led_frame.pack(padx=10, pady=5)
         self.led_scale = tk.Scale(
             self.led_frame, from_=0.0, to=1.0, resolution=0.01,
-            orient='horizontal', command=self.update_led)
+            orient='horizontal', command=self.update_led
+        )
         self.led_scale.set(self.led_brightness)
         self.led_scale.pack(fill='x', padx=10, pady=5)
 
@@ -216,7 +232,8 @@ class App:
             self.preview_btn.destroy()
         self.preview_btn = tk.Button(
             self.root, text="Show External Preview",
-            command=self.toggle_external_preview)
+            command=self.toggle_external_preview
+        )
         self.preview_btn.pack(pady=5)
 
     def build_image_display(self):
@@ -225,7 +242,8 @@ class App:
             self.image_frame.destroy()
         self.image_frame = tk.LabelFrame(
             self.root, text="Last Captured Image",
-            width=400, height=300)
+            width=400, height=300
+        )
         self.image_frame.pack(padx=10, pady=5)
         self.image_frame.pack_propagate(False)
         self.image_label = tk.Label(self.image_frame, text="No images yet")
@@ -236,17 +254,22 @@ class App:
         if hasattr(self, 'tl_frame'):
             self.tl_frame.destroy()
         self.tl_frame = tk.LabelFrame(
-            self.root, text="Timelapse Settings", width=400)
+            self.root, text="Timelapse Settings", width=400
+        )
         self.tl_frame.pack(padx=10, pady=5)
-        tk.Label(self.tl_frame, text="e.g. 1h 30m 10s",
-                 fg='gray').grid(row=0, column=0, columnspan=2)
-        tk.Label(self.tl_frame, text="Duration:").grid(
-            row=1, column=0, sticky='e', padx=5)
+        tk.Label(
+            self.tl_frame, text="e.g. 1h 30m 10s",
+            fg='gray'
+        ).grid(row=0, column=0, columnspan=2)
+        tk.Label(
+            self.tl_frame, text="Duration:"
+        ).grid(row=1, column=0, sticky='e', padx=5)
         self.duration_entry = tk.Entry(self.tl_frame)
         self.duration_entry.grid(row=1, column=1, padx=5)
         self.duration_entry.insert(0, '30m')
-        tk.Label(self.tl_frame, text="Frequency:").grid(
-            row=2, column=0, sticky='e', padx=5)
+        tk.Label(
+            self.tl_frame, text="Frequency:"
+        ).grid(row=2, column=0, sticky='e', padx=5)
         self.freq_entry = tk.Entry(self.tl_frame)
         self.freq_entry.grid(row=2, column=1, padx=5)
         self.freq_entry.insert(0, '5s')
@@ -256,7 +279,8 @@ class App:
         self.start_btn = tk.Button(
             self.root,
             text="Confirm settings and start timelapse",
-            command=self.start_timelapse)
+            command=self.start_timelapse
+        )
         self.start_btn.pack(pady=10)
 
     def move(self, rel):
@@ -290,7 +314,6 @@ class App:
 
     def start_timelapse(self):
         """Begin timelapse; disable controls and schedule captures."""
-        # stop preview if active
         if self.previewing:
             try:
                 self.cam.stop_preview()
@@ -307,10 +330,8 @@ class App:
             return
 
         # disable controls
-        for btn in self.coarse_frame.winfo_children():
-            btn.config(state='disabled')
-        for btn in self.fine_frame.winfo_children():
-            btn.config(state='disabled')
+        for btn in self.coarse_frame.winfo_children(): btn.config(state='disabled')
+        for btn in self.fine_frame.winfo_children(): btn.config(state='disabled')
         self.change_inc_btn.config(state='disabled')
         self.led_scale.config(state='disabled')
         self.preview_btn.config(state='disabled')
@@ -328,7 +349,8 @@ class App:
         self.start_btn.config(
             text="Stop and end timelapse early",
             command=self.stop_timelapse,
-            state='normal')
+            state='normal'
+        )
         self.timelapse_running = True
         self.capture_loop(frequency)
 
@@ -346,10 +368,8 @@ class App:
 
     def reset_controls(self):
         """Re-enable UI after timelapse stopped or completed."""
-        for btn in self.coarse_frame.winfo_children():
-            btn.config(state='normal')
-        for btn in self.fine_frame.winfo_children():
-            btn.config(state='normal')
+        for btn in self.coarse_frame.winfo_children(): btn.config(state='normal')
+        for btn in self.fine_frame.winfo_children(): btn.config(state='normal')
         self.change_inc_btn.config(state='normal')
         self.led_scale.config(state='normal')
         self.preview_btn.config(state='normal')
@@ -358,7 +378,8 @@ class App:
         self.start_btn.config(
             text="Confirm settings and start timelapse",
             command=self.start_timelapse,
-            state='normal')
+            state='normal'
+        )
         self.timelapse_running = False
 
     def capture_loop(self, freq):
