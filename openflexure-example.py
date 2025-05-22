@@ -49,14 +49,12 @@ def get_sangaboard():
 
         return Sangaboard()
 
-
 def get_camera():
     """
     Return a Picamera2-based camera instance or a mock fallback.
     """
     try:
         from picamera2 import Picamera2, Preview
-        from libcamera import controls
     except ImportError:
         # Mock fallback
         class Camera:
@@ -77,55 +75,50 @@ def get_camera():
 
         return Camera()
 
-    # Real Picamera2 initialization
+    # Real camera setup
     picam2 = Picamera2()
+    # Configure exposure & AWB
+    from libcamera import controls
     picam2.set_controls({
-        "ExposureTime": DEFAULT_EXPOSURE,
-        "AwbEnable": True,
-        "AwbMode": getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
+        controls.ExposureTime: DEFAULT_EXPOSURE,
+        controls.AwbEnable: True,
+        controls.AwbMode: getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
     })
 
-    # Low-res preview for performance
+    # Low-res preview for speed
     preview_cfg = picam2.create_preview_configuration(
         main={"size": (640, 480)}
     )
-    # Full-res stills (default JPEG encoding)
-    still_cfg = picam2.create_still_configuration(
-        main={"size": picam2.sensor_resolution}
-    )
     picam2.configure(preview_cfg)
 
+    from PIL import Image
+    import numpy as np  # picamera2 returns numpy arrays
+
     class Camera:
-        """Wrapper for Picamera2 preview and capture."""
-        def __init__(self, picam, preview_cfg, still_cfg):
+        """Wraps Picamera2 preview and capture via capture_array + PIL."""
+        def __init__(self, picam):
             self._picam = picam
-            self._preview_cfg = preview_cfg
-            self._still_cfg = still_cfg
+            self._previewing = False
 
         def start_preview(self):
-            try:
-                self._picam.start()
-            except Exception:
-                pass
-            try:
-                self._picam.start_preview(Preview.QTGL)
-            except Exception:
-                self._picam.start_preview(Preview.QT)
+            if not self._previewing:
+                # This both starts the pipeline and shows a window
+                try:
+                    self._picam.start_preview(Preview.QTGL)
+                except Exception:
+                    self._picam.start_preview(Preview.QT)
+                self._previewing = True
 
         def stop_preview(self):
-            self._picam.stop_preview()
+            if self._previewing:
+                self._picam.stop_preview()
+                self._previewing = False
 
         def take_photo(self, filename):
-            try:
-                self._picam.start()
-            except Exception:
-                pass
-            if hasattr(self._picam, "switch_mode_and_capture"):
-                self._picam.switch_mode_and_capture(self._still_cfg, filename)
-            else:
-                self._picam.switch_mode(self._still_cfg)
-                self._picam.capture_file(filename)
-                self._picam.switch_mode(self._preview_cfg)
+            # capture_array always works once configured
+            arr = self._picam.capture_array()
+            # arr is a NumPy array in RGB
+            Image.fromarray(arr).save(filename, format='JPEG')
 
         def set_awb(self, mode_str):
             awb_val = getattr(controls.AwbModeEnum, mode_str.capitalize())
@@ -134,7 +127,7 @@ def get_camera():
         def set_exposure(self, exp_us):
             self._picam.set_controls({"ExposureTime": int(exp_us)})
 
-    return Camera(picam2, preview_cfg, still_cfg)
+    return Camera(picam2)
 
 
 def format_exposure(us):
