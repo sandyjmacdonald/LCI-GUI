@@ -52,7 +52,7 @@ def get_sangaboard():
 
 def get_camera():
     """
-    Return a Picamera2-based camera instance, or a mock if imports fail.
+    Return a Picamera2-based camera instance or a mock fallback.
     """
     try:
         from picamera2 import Picamera2, Preview
@@ -62,17 +62,22 @@ def get_camera():
         class Camera:
             def start_preview(self):
                 print("[Mock] Camera preview started")
+
             def stop_preview(self):
                 print("[Mock] Camera preview stopped")
+
             def take_photo(self, filename):
                 print(f"[Mock] Photo taken and saved to {filename}")
+
             def set_awb(self, mode_str):
                 print(f"[Mock] AWB set to {mode_str}")
+
             def set_exposure(self, exp_us):
                 print(f"[Mock] Exposure set to {exp_us}")
+
         return Camera()
 
-    # Real camera setup
+    # Real Picamera2 initialization
     picam2 = Picamera2()
     picam2.set_controls({
         "ExposureTime": DEFAULT_EXPOSURE,
@@ -84,19 +89,18 @@ def get_camera():
     preview_cfg = picam2.create_preview_configuration(
         main={"size": (640, 480)}
     )
-    # Full-res stills encoded as JPEG
+    # Full-res stills (default JPEG encoding)
     still_cfg = picam2.create_still_configuration(
-        main={"size": picam2.sensor_resolution},
-        encode="jpeg"
+        main={"size": picam2.sensor_resolution}
     )
     picam2.configure(preview_cfg)
 
     class Camera:
-        """Wraps Picamera2 for preview and still capture."""
-        def __init__(self, picam, p_cfg, s_cfg):
+        """Wrapper for Picamera2 preview and capture."""
+        def __init__(self, picam, preview_cfg, still_cfg):
             self._picam = picam
-            self._preview_cfg = p_cfg
-            self._still_cfg = s_cfg
+            self._preview_cfg = preview_cfg
+            self._still_cfg = still_cfg
 
         def start_preview(self):
             try:
