@@ -52,33 +52,45 @@ def get_sangaboard():
 
 def get_camera():
     """Return a Picamera2-based camera instance or a mock."""
-    from importlib import import_module
     try:
-        picam2_mod = import_module('picamera2')
-        Picamera2 = picam2_mod.Picamamera2 if hasattr(picam2_mod, 'Picamamera2') else picam2_mod.Picamera2
-        Preview = picam2_mod.Preview
-        controls_mod = import_module('libcamera.controls')
+        from picamera2 import Picamera2, Preview
+        from libcamera import controls
     except ImportError:
-        # Mock fallback when Picamera2 or controls not installed
         class Camera:
-            def start_preview(self): print("[Mock] Camera preview started")
-            def stop_preview(self): print("[Mock] Camera preview stopped")
-            def take_photo(self, filename): print(f"[Mock] Photo taken and saved to {filename}")
-            def set_awb(self, mode_str): print(f"[Mock] AWB set to {mode_str}")
-            def set_exposure(self, exp_us): print(f"[Mock] Exposure set to {exp_us}")
+            def start_preview(self):
+                print("[Mock] Camera preview started")
+            def stop_preview(self):
+                print("[Mock] Camera preview stopped")
+            def take_photo(self, filename):
+                print(f"[Mock] Photo taken and saved to {filename}")
+            def set_awb(self, mode_str):
+                print(f"[Mock] AWB set to {mode_str}")
+            def set_exposure(self, exp_us):
+                print(f"[Mock] Exposure set to {exp_us}")
         return Camera()
 
+    # Initialize Picamera2
     picam2 = Picamera2()
     picam2.set_controls({
         "ExposureTime": DEFAULT_EXPOSURE,
         "AwbEnable": True,
-        "AwbMode": getattr(controls_mod.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
+        "AwbMode": getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
     })
-    preview_cfg = picam2.create_preview_configuration(main={'size': (640, 480)})
-    still_cfg = picam2.create_still_configuration(main={'size': picam2.sensor_resolution}, encode='jpeg')
+
+    # Low-res preview for performance
+    preview_cfg = picam2.create_preview_configuration(
+        main={'size': (640, 480)}
+    )
+    # Full-res stills encoded as JPEG
+    still_cfg = picam2.create_still_configuration(
+        main={'size': picam2.sensor_resolution},
+        encode='jpeg'
+    )
     picam2.configure(preview_cfg)
+    # Pipeline start deferred until needed
 
     class Camera:
+        """Wrapper for Picamera2 preview and capture."""
         def __init__(self, picam, prev_cfg, still_cfg):
             self._picam = picam
             self._prev_cfg = prev_cfg
@@ -110,7 +122,7 @@ def get_camera():
                 self._picam.switch_mode(self._prev_cfg)
 
         def set_awb(self, mode_str):
-            awb_val = getattr(controls_mod.AwbModeEnum, mode_str.capitalize())
+            awb_val = getattr(controls.AwbModeEnum, mode_str.capitalize())
             self._picam.set_controls({"AwbMode": awb_val})
 
         def set_exposure(self, exp_us):
