@@ -66,9 +66,11 @@ def get_camera():
             )
         })
 
+                # Low-resolution preview (640x480) for speed
         preview_cfg = picam2.create_preview_configuration(
-            main={'size': picam2.sensor_resolution}
+            main={'size': (640, 480)}
         )
+                # Full-resolution still configuration
         still_cfg = picam2.create_still_configuration(
             main={'size': picam2.sensor_resolution}
         )
