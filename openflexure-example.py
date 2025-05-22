@@ -11,7 +11,7 @@ DEFAULT_COARSE_INCREMENT = 500
 DEFAULT_LED_BRIGHTNESS = 0.33
 DEFAULT_EXPOSURE = 10000  # in microseconds (10 ms)
 DEFAULT_WHITEBALANCE = 'daylight'
-AWB_OPTIONS = ['auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy']
+AWB_OPTIONS = ['auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy', 'custom']
 
 
 def get_sangaboard():
@@ -57,10 +57,11 @@ def get_camera():
         from libcamera import controls
 
         picam2 = Picamera2()
+        # Use string control keys to avoid ControlId issues
         picam2.set_controls({
-            controls.ExposureTime: DEFAULT_EXPOSURE,
-            controls.AwbEnable: True,
-            controls.AwbMode: getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
+            "ExposureTime": DEFAULT_EXPOSURE,
+            "AwbEnable": True,
+            "AwbMode": getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
         })
         preview_cfg = picam2.create_preview_configuration(
             main={'size': picam2.sensor_resolution}
@@ -92,12 +93,50 @@ def get_camera():
 
             def set_awb(self, mode_str):
                 awb_val = getattr(self._controls.AwbModeEnum, mode_str.capitalize())
+                # Use string key
                 self._picam.set_controls({'AwbMode': awb_val})
 
             def set_exposure(self, exp_us):
-                self._picam.set_controls({self._controls.ExposureTime: int(exp_us)})
+                # Use string key
+                self._picam.set_controls({'ExposureTime': int(exp_us)})
 
         return Camera(picam2, preview_cfg, still_cfg, controls)
+    except ImportError:
+        class Camera:
+            def start_preview(self):
+                print("[Mock] Camera preview started")
+
+            def stop_preview(self):
+                print("[Mock] Camera preview stopped")
+
+            def take_photo(self, filename):
+                print(f"[Mock] Photo taken and saved to {filename}")
+
+            def set_awb(self, mode_str):
+                print(f"[Mock] AWB set to {mode_str}")
+
+            def set_exposure(self, exp_us):
+                print(f"[Mock] Exposure set to {exp_us}")
+
+        return Camera()
+    except ImportError:
+        class Camera:
+            def start_preview(self):
+                print("[Mock] Camera preview started")
+
+            def stop_preview(self):
+                print("[Mock] Camera preview stopped")
+
+            def take_photo(self, filename):
+                print(f"[Mock] Photo taken and saved to {filename}")
+
+            def set_awb(self, mode_str):
+                print(f"[Mock] AWB set to {mode_str}")
+
+            def set_exposure(self, exp_us):
+                print(f"[Mock] Exposure set to {exp_us}")
+
+        return Camera()
     except ImportError:
         class Camera:
             def start_preview(self):
@@ -120,8 +159,8 @@ def get_camera():
 
 def format_exposure(us):
     """Convert microseconds to milliseconds string."""
-    ms = us / 1000
-    return f"{int(ms)} ms"
+    ms = us // 1000
+    return f"{ms} ms"
 
 
 def parse_time_value(time_str):
@@ -144,7 +183,6 @@ def parse_time_value(time_str):
 
 class App:
     """Main application GUI for timelapse control."""
-
     def __init__(self, root):
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
@@ -199,11 +237,11 @@ class App:
 
         self.coarse_frame = tk.LabelFrame(
             self.motor_container,
-            text=f"Coarse motor control (inc: {self.motor_increment_coarse})"
+            text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})"
         )
         self.fine_frame = tk.LabelFrame(
             self.motor_container,
-            text=f"Fine motor control (inc: {self.motor_increment_fine})"
+            text=f"Fine Motor Control (inc: {self.motor_increment_fine})"
         )
 
         self.coarse_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
@@ -269,7 +307,7 @@ class App:
         """Create dropdown for white balance selection."""
         if hasattr(self, 'awb_frame'):
             self.awb_frame.destroy()
-        self.awb_frame = tk.LabelFrame(self.light_container, text="White balance")
+        self.awb_frame = tk.LabelFrame(self.light_container, text="White Balance")
         self.awb_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
 
         self.awb_var = tk.StringVar(value=self.awb_mode)
@@ -279,15 +317,16 @@ class App:
             *AWB_OPTIONS,
             command=self.change_awb
         )
-        awb_menu.pack(side='bottom', fill='x', padx=10, pady=3)
+        awb_menu.pack(fill='both', expand=True, padx=10, pady=5)
 
     def build_exposure_control(self):
         """Create slider for exposure time in milliseconds."""
         if hasattr(self, 'exp_frame'):
             self.exp_frame.destroy()
-        self.exp_frame = tk.LabelFrame(self.light_container, text="Exposure time (ms)")
+        self.exp_frame = tk.LabelFrame(self.light_container, text="Exposure Time (ms)")
         self.exp_frame.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
 
+        # Slider: 1 ms to 100 ms
         self.exp_scale = tk.Scale(
             self.exp_frame,
             from_=1,
@@ -304,7 +343,8 @@ class App:
         """Create slider for LED brightness."""
         if hasattr(self, 'led_frame'):
             self.led_frame.destroy()
-        self.led_frame = tk.LabelFrame(self.light_container, text="LED brightness")
+        self.led_frame = tk.LabelFrame(self.light_container, text="LED Brightness")
+
         self.led_frame.grid(row=0, column=2, padx=5, pady=5, sticky='nsew')
 
         self.led_scale = tk.Scale(
