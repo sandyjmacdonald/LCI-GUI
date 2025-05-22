@@ -51,11 +51,14 @@ def get_sangaboard():
 
 
 def get_camera():
-    """Return a Picamera2-based camera instance or a mock."""
+    """
+    Return a Picamera2-based camera instance, or a mock if imports fail.
+    """
     try:
         from picamera2 import Picamera2, Preview
         from libcamera import controls
     except ImportError:
+        # Mock fallback
         class Camera:
             def start_preview(self):
                 print("[Mock] Camera preview started")
@@ -69,7 +72,7 @@ def get_camera():
                 print(f"[Mock] Exposure set to {exp_us}")
         return Camera()
 
-    # Initialize Picamera2
+    # Real camera setup
     picam2 = Picamera2()
     picam2.set_controls({
         "ExposureTime": DEFAULT_EXPOSURE,
@@ -79,22 +82,21 @@ def get_camera():
 
     # Low-res preview for performance
     preview_cfg = picam2.create_preview_configuration(
-        main={'size': (640, 480)}
+        main={"size": (640, 480)}
     )
     # Full-res stills encoded as JPEG
     still_cfg = picam2.create_still_configuration(
-        main={'size': picam2.sensor_resolution},
-        encode='jpeg'
+        main={"size": picam2.sensor_resolution},
+        encode="jpeg"
     )
     picam2.configure(preview_cfg)
-    # Pipeline start deferred until needed
 
     class Camera:
-        """Wrapper for Picamera2 preview and capture."""
-        def __init__(self, picam, prev_cfg, still_cfg):
+        """Wraps Picamera2 for preview and still capture."""
+        def __init__(self, picam, p_cfg, s_cfg):
             self._picam = picam
-            self._prev_cfg = prev_cfg
-            self._still_cfg = still_cfg
+            self._preview_cfg = p_cfg
+            self._still_cfg = s_cfg
 
         def start_preview(self):
             try:
@@ -114,12 +116,12 @@ def get_camera():
                 self._picam.start()
             except Exception:
                 pass
-            if hasattr(self._picam, 'switch_mode_and_capture'):
+            if hasattr(self._picam, "switch_mode_and_capture"):
                 self._picam.switch_mode_and_capture(self._still_cfg, filename)
             else:
                 self._picam.switch_mode(self._still_cfg)
                 self._picam.capture_file(filename)
-                self._picam.switch_mode(self._prev_cfg)
+                self._picam.switch_mode(self._preview_cfg)
 
         def set_awb(self, mode_str):
             awb_val = getattr(controls.AwbModeEnum, mode_str.capitalize())
@@ -129,44 +131,6 @@ def get_camera():
             self._picam.set_controls({"ExposureTime": int(exp_us)})
 
     return Camera(picam2, preview_cfg, still_cfg)
-
-    except Exception:
-        class Camera:
-            def start_preview(self):
-                print("[Mock] Camera preview started")
-
-            def stop_preview(self):
-                print("[Mock] Camera preview stopped")
-
-            def take_photo(self, filename):
-                print(f"[Mock] Photo taken and saved to {filename}")
-
-            def set_awb(self, mode_str):
-                print(f"[Mock] AWB set to {mode_str}")
-
-            def set_exposure(self, exp_us):
-                print(f"[Mock] Exposure set to {exp_us}")
-
-        return Camera()
-
-    except Exception:
-        class Camera:
-            def start_preview(self):
-                print("[Mock] Camera preview started")
-
-            def stop_preview(self):
-                print("[Mock] Camera preview stopped")
-
-            def take_photo(self, filename):
-                print(f"[Mock] Photo taken and saved to {filename}")
-
-            def set_awb(self, mode_str):
-                print(f"[Mock] AWB set to {mode_str}")
-
-            def set_exposure(self, exp_us):
-                print(f"[Mock] Exposure set to {exp_us}")
-
-        return Camera()
 
 
 def format_exposure(us):
