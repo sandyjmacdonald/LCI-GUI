@@ -327,8 +327,8 @@ class App:
         self.awb_mode = selection
         try:
             self.cam.set_awb(selection)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Could not set white balance: {e}")
 
     def change_exposure(self, val):
         """Apply exposure change in real time (ms)."""
@@ -336,8 +336,8 @@ class App:
         self.exposure_time = int(val) * 1000
         try:
             self.cam.set_exposure(self.exposure_time)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Could not set exposure: {e}")
 
     def update_led(self, val):
         """Adjust LED brightness immediately if previewing."""
