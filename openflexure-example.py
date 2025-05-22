@@ -69,9 +69,9 @@ def get_camera():
 
         # Low-res preview for speed
                 # Low-res preview (640×480)
+        # Low-res preview (640×480)
         preview_cfg = picam2.create_preview_configuration(
             main={'size': (640, 480)}
-        )}
         )
         # Full-res still captures
                 # Still capture at full resolution, encode directly to JPEG
