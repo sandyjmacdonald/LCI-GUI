@@ -76,7 +76,8 @@ def get_camera():
         )
 
         picam2.configure(preview_cfg)
-        picam2.start()
+        # Camera start deferred until first preview
+        # picam2.start()
 
         class Camera:
             """Wrapper for Picamera2 preview, capture, AWB, and exposure."""
@@ -92,10 +93,16 @@ def get_camera():
                 self._still_cfg = still_cfg
                 self._controls = controls_mod
 
-            def start_preview(self):
-                try:
-                    self._picam.start_preview(Preview.QTGL)
-                except Exception:
+                    def start_preview(self):
+            """Start camera and open preview window."""
+            try:
+                # Start the camera pipeline
+                self._picam.start()
+                # Try GL preview first, fallback to QT
+                self._picam.start_preview(Preview.QTGL)
+            except Exception:
+                self._picam.start_preview(Preview.QT)
+
                     self._picam.start_preview(Preview.QT)
 
             def stop_preview(self):
