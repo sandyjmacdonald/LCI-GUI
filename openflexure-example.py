@@ -105,6 +105,7 @@ class App:
         except Exception:
             pass
         self.cam = get_camera()
+        self.cam.pc2.set_controls({"AeEnable": False})
         self.sb.illumination.cc_led = 0.0
 
         # Initial state
