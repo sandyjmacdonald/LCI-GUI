@@ -57,6 +57,7 @@ def get_camera():
         from libcamera import controls
 
         picam2 = Picamera2()
+        # Use string keys to avoid ControlId issues
         picam2.set_controls({
             "ExposureTime": DEFAULT_EXPOSURE,
             "AwbEnable": True,
@@ -66,49 +67,43 @@ def get_camera():
             )
         })
 
-                # Low-resolution preview (640x480) for speed
+        # Low-res preview for speed
         preview_cfg = picam2.create_preview_configuration(
             main={'size': (640, 480)}
         )
-                # Full-resolution still configuration
+        # Full-res still captures
         still_cfg = picam2.create_still_configuration(
             main={'size': picam2.sensor_resolution}
         )
-
         picam2.configure(preview_cfg)
-        # Camera start deferred until first preview
-        # picam2.start()
+        # Do not start pipeline until needed
 
         class Camera:
-            """Wrapper for Picamera2 preview, capture, AWB, and exposure."""
-            def __init__(
-                self,
-                picam,
-                prev_cfg,
-                still_cfg,
-                controls_mod
-            ):
+            """Wrapper for Picamera2 preview and capture."""
+            def __init__(self, picam, prev_cfg, still_cfg, controls_mod):
                 self._picam = picam
                 self._prev_cfg = prev_cfg
                 self._still_cfg = still_cfg
                 self._controls = controls_mod
 
-                    def start_preview(self):
-            """Start camera and open preview window."""
-            try:
-                # Start the camera pipeline
-                self._picam.start()
-                # Try GL preview first, fallback to QT
-                self._picam.start_preview(Preview.QTGL)
-            except Exception:
-                self._picam.start_preview(Preview.QT)
-
+            def start_preview(self):
+                try:
+                    self._picam.start()
+                except Exception:
+                    pass
+                try:
+                    self._picam.start_preview(Preview.QTGL)
+                except Exception:
                     self._picam.start_preview(Preview.QT)
 
             def stop_preview(self):
                 self._picam.stop_preview()
 
             def take_photo(self, filename):
+                try:
+                    self._picam.start()
+                except Exception:
+                    pass
                 if hasattr(self._picam, 'switch_mode_and_capture'):
                     self._picam.switch_mode_and_capture(
                         self._still_cfg,
@@ -118,10 +113,6 @@ def get_camera():
                     self._picam.switch_mode(self._still_cfg)
                     self._picam.capture_file(filename)
                     self._picam.switch_mode(self._prev_cfg)
-                    try:
-                        self._picam.start_preview(Preview.QTGL)
-                    except Exception:
-                        self._picam.start_preview(Preview.QT)
 
             def set_awb(self, mode_str):
                 awb_val = getattr(
@@ -134,6 +125,25 @@ def get_camera():
                 self._picam.set_controls({"ExposureTime": int(exp_us)})
 
         return Camera(picam2, preview_cfg, still_cfg, controls)
+
+    except Exception:
+        class Camera:
+            def start_preview(self):
+                print("[Mock] Camera preview started")
+
+            def stop_preview(self):
+                print("[Mock] Camera preview stopped")
+
+            def take_photo(self, filename):
+                print(f"[Mock] Photo taken and saved to {filename}")
+
+            def set_awb(self, mode_str):
+                print(f"[Mock] AWB set to {mode_str}")
+
+            def set_exposure(self, exp_us):
+                print(f"[Mock] Exposure set to {exp_us}")
+
+        return Camera()
 
     except Exception:
         class Camera:
