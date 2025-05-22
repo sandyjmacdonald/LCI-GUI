@@ -8,8 +8,8 @@ from PIL import Image, ImageTk
 # Defaults
 DEFAULT_FINE_INCREMENT = 50
 DEFAULT_COARSE_INCREMENT = 500
-DEFAULT_LED_BRIGHTNESS = 0.33
-DEFAULT_EXPOSURE = 10000  # in microseconds (10 ms)
+DEFAULT_LED_BRIGHTNESS = 0.30
+DEFAULT_EXPOSURE = 50000  # in microseconds (10 ms)
 DEFAULT_WHITEBALANCE = 'daylight'
 AWB_OPTIONS = ['auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy']
 
