@@ -68,12 +68,16 @@ def get_camera():
         })
 
         # Low-res preview for speed
+                # Low-res preview (640×480)
         preview_cfg = picam2.create_preview_configuration(
             main={'size': (640, 480)}
+        )}
         )
         # Full-res still captures
+                # Still capture at full resolution, encode directly to JPEG
         still_cfg = picam2.create_still_configuration(
-            main={'size': picam2.sensor_resolution}
+            main={'size': picam2.sensor_resolution},
+            encode='jpeg'
         )
         picam2.configure(preview_cfg)
         # Do not start pipeline until needed
