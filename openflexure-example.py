@@ -52,83 +52,71 @@ def get_sangaboard():
 
 def get_camera():
     """Return a Picamera2-based camera instance or a mock."""
+    from importlib import import_module
     try:
-        from picamera2 import Picamera2, Preview
-        from libcamera import controls
-
-        picam2 = Picamera2()
-        # Use string keys to avoid ControlId issues
-        picam2.set_controls({
-            "ExposureTime": DEFAULT_EXPOSURE,
-            "AwbEnable": True,
-            "AwbMode": getattr(
-                controls.AwbModeEnum,
-                DEFAULT_WHITEBALANCE.capitalize()
-            )
-        })
-
-        # Low-res preview for speed
-                # Low-res preview (640×480)
-        # Low-res preview (640×480)
-        preview_cfg = picam2.create_preview_configuration(
-            main={'size': (640, 480)}
-        )
-        # Full-res still captures
-                # Still capture at full resolution, encode directly to JPEG
-        still_cfg = picam2.create_still_configuration(
-            main={'size': picam2.sensor_resolution},
-            encode='jpeg'
-        )
-        picam2.configure(preview_cfg)
-        # Do not start pipeline until needed
-
+        picam2_mod = import_module('picamera2')
+        Picamera2 = picam2_mod.Picamamera2 if hasattr(picam2_mod, 'Picamamera2') else picam2_mod.Picamera2
+        Preview = picam2_mod.Preview
+        controls_mod = import_module('libcamera.controls')
+    except ImportError:
+        # Mock fallback when Picamera2 or controls not installed
         class Camera:
-            """Wrapper for Picamera2 preview and capture."""
-            def __init__(self, picam, prev_cfg, still_cfg, controls_mod):
-                self._picam = picam
-                self._prev_cfg = prev_cfg
-                self._still_cfg = still_cfg
-                self._controls = controls_mod
+            def start_preview(self): print("[Mock] Camera preview started")
+            def stop_preview(self): print("[Mock] Camera preview stopped")
+            def take_photo(self, filename): print(f"[Mock] Photo taken and saved to {filename}")
+            def set_awb(self, mode_str): print(f"[Mock] AWB set to {mode_str}")
+            def set_exposure(self, exp_us): print(f"[Mock] Exposure set to {exp_us}")
+        return Camera()
 
-            def start_preview(self):
-                try:
-                    self._picam.start()
-                except Exception:
-                    pass
-                try:
-                    self._picam.start_preview(Preview.QTGL)
-                except Exception:
-                    self._picam.start_preview(Preview.QT)
+    picam2 = Picamera2()
+    picam2.set_controls({
+        "ExposureTime": DEFAULT_EXPOSURE,
+        "AwbEnable": True,
+        "AwbMode": getattr(controls_mod.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
+    })
+    preview_cfg = picam2.create_preview_configuration(main={'size': (640, 480)})
+    still_cfg = picam2.create_still_configuration(main={'size': picam2.sensor_resolution}, encode='jpeg')
+    picam2.configure(preview_cfg)
 
-            def stop_preview(self):
-                self._picam.stop_preview()
+    class Camera:
+        def __init__(self, picam, prev_cfg, still_cfg):
+            self._picam = picam
+            self._prev_cfg = prev_cfg
+            self._still_cfg = still_cfg
 
-            def take_photo(self, filename):
-                try:
-                    self._picam.start()
-                except Exception:
-                    pass
-                if hasattr(self._picam, 'switch_mode_and_capture'):
-                    self._picam.switch_mode_and_capture(
-                        self._still_cfg,
-                        filename
-                    )
-                else:
-                    self._picam.switch_mode(self._still_cfg)
-                    self._picam.capture_file(filename)
-                    self._picam.switch_mode(self._prev_cfg)
+        def start_preview(self):
+            try:
+                self._picam.start()
+            except Exception:
+                pass
+            try:
+                self._picam.start_preview(Preview.QTGL)
+            except Exception:
+                self._picam.start_preview(Preview.QT)
 
-            def set_awb(self, mode_str):
-                awb_val = getattr(
-                    self._controls.AwbModeEnum,
-                    mode_str.capitalize()
-                )
-                self._picam.set_controls({"AwbMode": awb_val})
+        def stop_preview(self):
+            self._picam.stop_preview()
 
-            def set_exposure(self, exp_us):
-                self._picam.set_controls({"ExposureTime": int(exp_us)})
+        def take_photo(self, filename):
+            try:
+                self._picam.start()
+            except Exception:
+                pass
+            if hasattr(self._picam, 'switch_mode_and_capture'):
+                self._picam.switch_mode_and_capture(self._still_cfg, filename)
+            else:
+                self._picam.switch_mode(self._still_cfg)
+                self._picam.capture_file(filename)
+                self._picam.switch_mode(self._prev_cfg)
 
-        return Camera(picam2, preview_cfg, still_cfg, controls)
+        def set_awb(self, mode_str):
+            awb_val = getattr(controls_mod.AwbModeEnum, mode_str.capitalize())
+            self._picam.set_controls({"AwbMode": awb_val})
+
+        def set_exposure(self, exp_us):
+            self._picam.set_controls({"ExposureTime": int(exp_us)})
+
+    return Camera(picam2, preview_cfg, still_cfg)
 
     except Exception:
         class Camera:
