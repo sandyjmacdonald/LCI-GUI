@@ -326,7 +326,7 @@ class App:
         """Apply white balance change in real time."""
         self.awb_mode = selection
         try:
-            self.cam.set_awb(selection)
+            self.cam.white_balance(selection)
         except Exception as e:
             print(f"Could not set white balance: {e}")
 
@@ -335,7 +335,7 @@ class App:
         # val is in milliseconds
         self.exposure_time = int(val) * 1000
         try:
-            self.cam.set_exposure(self.exposure_time)
+            self.cam.exposure(self.exposure_time)
         except Exception as e:
             print(f"Could not set exposure: {e}")
 
