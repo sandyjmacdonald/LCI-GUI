@@ -11,7 +11,7 @@ DEFAULT_COARSE_INCREMENT = 500
 DEFAULT_LED_BRIGHTNESS = 0.33
 DEFAULT_EXPOSURE = 10000  # in microseconds (10 ms)
 DEFAULT_WHITEBALANCE = 'daylight'
-AWB_OPTIONS = ['auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy', 'custom']
+AWB_OPTIONS = ['auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy']
 
 
 def get_sangaboard():
@@ -63,6 +63,7 @@ def get_camera():
             "AwbEnable": True,
             "AwbMode": getattr(controls.AwbModeEnum, DEFAULT_WHITEBALANCE.capitalize())
         })
+
         preview_cfg = picam2.create_preview_configuration(
             main={'size': picam2.sensor_resolution}
         )
@@ -73,8 +74,7 @@ def get_camera():
         picam2.start()
 
         class Camera:
-            """Wrapper for Picamera2 preview and capture."""
-
+            """Wrapper for Picamera2 preview, capture, AWB, and exposure control."""
             def __init__(self, picam, prev_cfg, still_cfg, controls_mod):
                 self._picam = picam
                 self._prev_cfg = prev_cfg
@@ -82,7 +82,7 @@ def get_camera():
                 self._controls = controls_mod
 
             def start_preview(self):
-                # Try the GL preview first, then fallback to QT if needed
+                # Try GL preview first, fallback to QT
                 try:
                     self._picam.start_preview(Preview.QTGL)
                 except Exception:
@@ -92,8 +92,11 @@ def get_camera():
                 self._picam.stop_preview()
 
             def take_photo(self, filename):
-                # Direct capture (no mode switch) for faster, non-blocking shots
+                # Switch to still config for full-res capture
+                self._picam.switch_mode(self._still_cfg)
                 self._picam.capture_file(filename)
+                # Return to preview mode
+                self._picam.switch_mode(self._prev_cfg)
 
             def set_awb(self, mode_str):
                 awb_val = getattr(self._controls.AwbModeEnum, mode_str.capitalize())
@@ -104,8 +107,8 @@ def get_camera():
 
         return Camera(picam2, preview_cfg, still_cfg, controls)
 
-    except ImportError:
-        # Mock implementation if Picamera2 or libcamera aren't present
+    except Exception:
+        # Mock implementation if Picamera2 or libcamera fail
         class Camera:
             def start_preview(self):
                 print("[Mock] Camera preview started")
@@ -155,7 +158,7 @@ class App:
         self.root = root
         root.title("OpenFlexure Timelapse Controller")
 
-        # Hardware setup
+        # Hardware
         self.sb = get_sangaboard()
         try:
             self.sb.open()
@@ -164,7 +167,7 @@ class App:
         self.cam = get_camera()
         self.sb.illumination.cc_led = 0.0
 
-        # Initial state
+        # State
         self.motor_increment_fine = DEFAULT_FINE_INCREMENT
         self.motor_increment_coarse = DEFAULT_COARSE_INCREMENT
         self.led_brightness = DEFAULT_LED_BRIGHTNESS
@@ -175,10 +178,9 @@ class App:
         self.after_id = None
         self.folder = None
 
-        # Layout containers
+        # Containers
         self.motor_container = tk.Frame(self.root)
         self.motor_container.pack(padx=10, pady=5)
-
         self.light_container = tk.Frame(self.root)
         for i in range(3):
             self.light_container.grid_columnconfigure(i, weight=1)
@@ -205,13 +207,12 @@ class App:
 
         self.coarse_frame = tk.LabelFrame(
             self.motor_container,
-            text=f"Coarse Motor Control (inc: {self.motor_increment_coarse})"
+            text=f"Coarse motor control (inc: {self.motor_increment_coarse})"
         )
         self.fine_frame = tk.LabelFrame(
             self.motor_container,
-            text=f"Fine Motor Control (inc: {self.motor_increment_fine})"
+            text=f"Fine motor control (inc: {self.motor_increment_fine})"
         )
-
         self.coarse_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
         self.fine_frame.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
 
@@ -223,19 +224,12 @@ class App:
             rel_c = [d[i] * self.motor_increment_coarse for i in range(3)]
             rel_f = [d[i] * self.motor_increment_fine for i in range(3)]
 
-            btn_c = tk.Button(
-                self.coarse_frame,
-                text=lbl,
-                command=lambda r=rel_c: self.move(r)
-            )
-            btn_c.grid(row=idx//3, column=idx%3, padx=5, pady=5)
-
-            btn_f = tk.Button(
-                self.fine_frame,
-                text=lbl,
-                command=lambda r=rel_f: self.move(r)
-            )
-            btn_f.grid(row=idx//3, column=idx%3, padx=5, pady=5)
+            tk.Button(self.coarse_frame, text=lbl,
+                      command=lambda r=rel_c: self.move(r)
+                      ).grid(row=idx//3, column=idx%3, padx=5, pady=5)
+            tk.Button(self.fine_frame, text=lbl,
+                      command=lambda r=rel_f: self.move(r)
+                      ).grid(row=idx//3, column=idx%3, padx=5, pady=5)
 
     def build_increment_button(self):
         """Button spanning motor control columns to change increments."""
@@ -251,19 +245,15 @@ class App:
     def change_increments(self):
         """Prompt dialogs for new motor increments."""
         new_c = simpledialog.askinteger(
-            "Coarse increment",
-            "Enter coarse increment:",
-            initialvalue=self.motor_increment_coarse,
-            minvalue=1
+            "Coarse increment", "Enter coarse increment:",
+            initialvalue=self.motor_increment_coarse, minvalue=1
         )
         if new_c is not None:
             self.motor_increment_coarse = new_c
 
         new_f = simpledialog.askinteger(
-            "Fine increment",
-            "Enter fine increment:",
-            initialvalue=self.motor_increment_fine,
-            minvalue=1
+            "Fine increment", "Enter fine increment:",
+            initialvalue=self.motor_increment_fine, minvalue=1
         )
         if new_f is not None:
             self.motor_increment_fine = new_f
@@ -275,35 +265,23 @@ class App:
         """Create dropdown for white balance selection."""
         if hasattr(self, 'awb_frame'):
             self.awb_frame.destroy()
-        self.awb_frame = tk.LabelFrame(self.light_container, text="White Balance")
+        self.awb_frame = tk.LabelFrame(self.light_container, text="White balance")
         self.awb_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
-
         self.awb_var = tk.StringVar(value=self.awb_mode)
-        awb_menu = tk.OptionMenu(
-            self.awb_frame,
-            self.awb_var,
-            *AWB_OPTIONS,
-            command=self.change_awb
-        )
-        awb_menu.pack(fill='both', expand=True, padx=10, pady=5)
+        tk.OptionMenu(self.awb_frame, self.awb_var, *AWB_OPTIONS,
+                      command=self.change_awb).pack(fill='both', expand=True,
+                                                    padx=10, pady=5)
 
     def build_exposure_control(self):
         """Create slider for exposure time in milliseconds."""
         if hasattr(self, 'exp_frame'):
             self.exp_frame.destroy()
-        self.exp_frame = tk.LabelFrame(self.light_container, text="Exposure Time (ms)")
+        self.exp_frame = tk.LabelFrame(self.light_container,
+                                       text="Exposure time (ms)")
         self.exp_frame.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
-
-        # Slider: 1 ms to 100 ms
-        self.exp_scale = tk.Scale(
-            self.exp_frame,
-            from_=1,
-            to=100,
-            resolution=1,
-            orient='horizontal',
-            command=self.change_exposure
-        )
-        # initialize slider position
+        self.exp_scale = tk.Scale(self.exp_frame, from_=1, to=100,
+                                  resolution=1, orient='horizontal',
+                                  command=self.change_exposure)
         self.exp_scale.set(self.exposure_time // 1000)
         self.exp_scale.pack(fill='both', expand=True, padx=10, pady=5)
 
@@ -311,18 +289,12 @@ class App:
         """Create slider for LED brightness."""
         if hasattr(self, 'led_frame'):
             self.led_frame.destroy()
-        self.led_frame = tk.LabelFrame(self.light_container, text="LED Brightness")
-
+        self.led_frame = tk.LabelFrame(self.light_container,
+                                       text="LED brightness")
         self.led_frame.grid(row=0, column=2, padx=5, pady=5, sticky='nsew')
-
-        self.led_scale = tk.Scale(
-            self.led_frame,
-            from_=0.0,
-            to=1.0,
-            resolution=0.01,
-            orient='horizontal',
-            command=self.update_led
-        )
+        self.led_scale = tk.Scale(self.led_frame, from_=0.0, to=1.0,
+                                  resolution=0.01, orient='horizontal',
+                                  command=self.update_led)
         self.led_scale.set(self.led_brightness)
         self.led_scale.pack(fill='both', expand=True, padx=10, pady=5)
 
@@ -330,23 +302,18 @@ class App:
         """Create button to toggle camera preview."""
         if hasattr(self, 'preview_btn'):
             self.preview_btn.destroy()
-        self.preview_btn = tk.Button(
-            self.root,
-            text="Show camera preview",
-            command=self.toggle_external_preview
-        )
+        self.preview_btn = tk.Button(self.root,
+                                     text="Show camera preview",
+                                     command=self.toggle_external_preview)
         self.preview_btn.pack(pady=5)
 
     def build_image_display(self):
         """Create frame to display last captured image."""
         if hasattr(self, 'image_frame'):
             self.image_frame.destroy()
-        self.image_frame = tk.LabelFrame(
-            self.root,
-            text="Last captured image",
-            width=400,
-            height=300
-        )
+        self.image_frame = tk.LabelFrame(self.root,
+                                         text="Last captured image",
+                                         width=400, height=300)
         self.image_frame.pack(padx=10, pady=5)
         self.image_frame.pack_propagate(False)
         self.image_label = tk.Label(self.image_frame, text="No images yet")
@@ -356,28 +323,26 @@ class App:
         """Create timelapse settings fields and start button."""
         if hasattr(self, 'tl_frame'):
             self.tl_frame.destroy()
-        self.tl_frame = tk.LabelFrame(self.root, text="Timelapse settings", width=400)
+        self.tl_frame = tk.LabelFrame(self.root, text="Timelapse settings",
+                                      width=400)
         self.tl_frame.pack(padx=10, pady=5)
-
-        tk.Label(self.tl_frame, text="e.g. 1h 30m 10s", fg='gray').grid(row=0, column=0, columnspan=2)
-
-        tk.Label(self.tl_frame, text="Duration:").grid(row=1, column=0, sticky='e', padx=5)
+        tk.Label(self.tl_frame, text="e.g. 1h 30m 10s", fg='gray')\
+            .grid(row=0, column=0, columnspan=2)
+        tk.Label(self.tl_frame, text="Duration:")\
+            .grid(row=1, column=0, sticky='e', padx=5)
         self.duration_entry = tk.Entry(self.tl_frame)
         self.duration_entry.grid(row=1, column=1, padx=5)
         self.duration_entry.insert(0, '30m')
-
-        tk.Label(self.tl_frame, text="Frequency:").grid(row=2, column=0, sticky='e', padx=5)
+        tk.Label(self.tl_frame, text="Frequency:")\
+            .grid(row=2, column=0, sticky='e', padx=5)
         self.freq_entry = tk.Entry(self.tl_frame)
         self.freq_entry.grid(row=2, column=1, padx=5)
         self.freq_entry.insert(0, '5s')
-
         if hasattr(self, 'start_btn'):
             self.start_btn.destroy()
-        self.start_btn = tk.Button(
-            self.root,
-            text="Confirm settings and start timelapse",
-            command=self.start_timelapse
-        )
+        self.start_btn = tk.Button(self.root,
+                                   text="Confirm settings and start timelapse",
+                                   command=self.start_timelapse)
         self.start_btn.pack(pady=10)
 
     def change_awb(self, selection):
@@ -389,8 +354,7 @@ class App:
             pass
 
     def change_exposure(self, val):
-        """Apply exposure change in real time (ms)."""
-        # val is in milliseconds
+        """Apply exposure change in real time."""
         self.exposure_time = int(val) * 1000
         try:
             self.cam.set_exposure(self.exposure_time)
@@ -521,7 +485,8 @@ class App:
         except Exception:
             pass
 
-        self.after_id = self.root.after(int(freq * 1000), lambda: self.capture_loop(freq))
+        self.after_id = self.root.after(int(freq * 1000),
+                                       lambda: self.capture_loop(freq))
 
     def cleanup(self):
         """Cleanup hardware and exit."""
@@ -534,6 +499,7 @@ class App:
         except Exception:
             pass
         self.root.destroy()
+
 
 if __name__ == '__main__':
     root = tk.Tk()
